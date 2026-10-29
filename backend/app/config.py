@@ -15,7 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=REPO_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=(REPO_ROOT / ".env", REPO_ROOT / "backend" / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     app_name: str = "Cygnus"
@@ -31,6 +33,11 @@ class Settings(BaseSettings):
     # Must be copied EXACTLY from GET /v1/models (casing differs between models).
     nebius_model_id: str = "nvidia/nemotron-3-super-120b-a12b"
 
+    # --- NVIDIA API Catalog (OpenAI-compatible API) ---
+    nvidia_api_key: SecretStr | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -38,6 +45,10 @@ class Settings(BaseSettings):
     @property
     def ai_configured(self) -> bool:
         return bool(self.nebius_api_key and self.nebius_api_key.get_secret_value())
+
+    @property
+    def nvidia_configured(self) -> bool:
+        return bool(self.nvidia_api_key and self.nvidia_api_key.get_secret_value())
 
 
 @lru_cache

@@ -1,25 +1,33 @@
-import { useEffect, useState } from 'react'
-import Nav, { type Route } from './components/Nav'
-import Dashboard from './pages/Dashboard'
+import { useEffect, useMemo } from 'react'
+import AppShell from './components/AppShell'
+import { parseRoute, sectionOf, useHash } from './lib/router'
+import Activity from './pages/Activity'
 import Landing from './pages/Landing'
-
-// Tiny hash router: "#/dashboard" shows the dashboard. No extra library needed yet.
-const read = (): Route => (window.location.hash.startsWith('#/dashboard') ? 'dashboard' : 'home')
+import Orders from './pages/Orders'
+import Overview from './pages/Overview'
+import Reschedule from './pages/Reschedule'
+import ReturnDetail from './pages/ReturnDetail'
+import Returns from './pages/Returns'
 
 export default function App() {
-  const [route, setRoute] = useState<Route>(read)
+  const hash = useHash()
+  const route = useMemo(() => parseRoute(hash), [hash])
+
   useEffect(() => {
-    const on = () => setRoute(read())
-    window.addEventListener('hashchange', on)
-    return () => window.removeEventListener('hashchange', on)
-  }, [])
+    if (hash.startsWith('#/')) window.scrollTo({ top: 0 })
+  }, [hash])
+
+  const section = sectionOf(route)
+  if (route.name === 'home' || !section) return <Landing />
+
   return (
-    <>
-      <Nav route={route} />
-      {route === 'home' ? <Landing /> : <Dashboard />}
-      <footer className="mx-auto max-w-6xl px-5 py-8 text-xs text-slate-500">
-        Cygnus · Nebius × NVIDIA Global AI Hackathon 2026 · Simulated retailer demo
-      </footer>
-    </>
+    <AppShell section={section}>
+      {route.name === 'overview' && <Overview />}
+      {route.name === 'returns' && <Returns />}
+      {route.name === 'return' && <ReturnDetail id={route.id} />}
+      {route.name === 'reschedule' && <Reschedule id={route.id} />}
+      {route.name === 'activity' && <Activity />}
+      {route.name === 'orders' && <Orders />}
+    </AppShell>
   )
 }

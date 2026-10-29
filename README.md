@@ -1,24 +1,25 @@
 # Cygnus
 
-**An AI agent that manages shopping returns and refunds from start to finish.**
+**A simulated returns and refunds workflow demo.**
 Built for the [Nebius × NVIDIA Global AI Hackathon 2026](https://nebiusglobalaihackathon.devpost.com/) (track: *Best Apps and Agents*).
 
 > A customer says: *"I ordered shoes, received the wrong size, and want my money back. Please handle the return."*
-> Cygnus understands the problem, checks the policy, starts the return, chases the courier, reschedules missed pickups, and confirms the refund **using real status evidence**.
+> Cygnus checks seeded order eligibility, records return-case events, and walks through simulated pickup, shipment, and refund status changes.
 
 ## Honesty note
 
-Real retailer APIs are not available, so Cygnus runs against a **simulated shopping platform**. Every simulated action is labelled in the UI and the API. Cygnus never claims a real refund or pickup happened.
+There are no retailer, courier, payment-network, or bank integrations. Orders, pickups, shipment events, and refund issuance are simulated and labelled in the UI and API. A resolved case means a simulated refund-issued event was recorded; it does not mean a bank credit was verified. The NVIDIA assistant is read-only and explains backend records; it cannot change workflow state. The existing Nebius client remains available for diagnostics.
 
-## Status: Part 1 complete (foundation)
+## Status: Integrated MVP
 
-| Works now | Not built yet (see `docs/IMPLEMENTATION_PLAN.md`) |
+| Works now | Not integrated |
 |---|---|
-| React + TypeScript + Tailwind landing page and dashboard | Agent loop and tool calling |
-| FastAPI backend with `/api/health` | Simulated retailer + order/return tables |
-| Dashboard reads live backend status | Pickup tracking, missed-pickup detection, rescheduling |
-| SQLite connectivity check | Deployment and demo video |
-| Nebius client + `scripts/check_llm.py` (needs your API key to run) | |
+| v0 landing page, overview, returns, return detail, reschedule, activity, and orders screens | Autonomous AI agent loop and tool calling |
+| SQLite-backed seeded demo orders, return cases, and event history | Real retailer, courier, pickup-slot, payment, or bank integration |
+| Eligibility checks and ordered simulated pickup/shipment/refund transitions | Agent tasks, approvals, and bank-credit confirmation |
+| API client connected to the FastAPI workflow; `#/dashboard` remains an alias for `#/overview` | Deployment and demo video |
+| Read-only NVIDIA assistant on Overview, grounded in selected backend records | Autonomous AI agent loop or AI-triggered return actions |
+| Nebius client and `scripts/check_llm.py` diagnostic | |
 
 ## Stack (mnemonic: **See, Serve, Store, Think**)
 
@@ -27,7 +28,7 @@ Real retailer APIs are not available, so Cygnus runs against a **simulated shopp
 | See | React + TypeScript (Vite), Tailwind CSS v4 |
 | Serve | Python + FastAPI |
 | Store | SQLite |
-| Think | NVIDIA Nemotron via Nebius Token Factory (OpenAI-compatible API) |
+| Think | NVIDIA API Catalog Nemotron (read-only assistant); Nebius client retained for diagnostics |
 
 ## Quick start
 
@@ -44,7 +45,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Check: open <http://127.0.0.1:8000/api/health>. You should see `"status":"ok"`. API docs: <http://127.0.0.1:8000/docs>.
+Check: open <http://127.0.0.1:8000/api/health>. You should see `"status":"ok"`. API docs: <http://127.0.0.1:8000/docs>. Workflow routes include `/api/orders`, `/api/returns`, `/api/returns/eligibility`, `/api/activity`, and simulated return-case actions under `/api/returns/{case_id}/`.
 
 **2. Frontend** (terminal 2)
 
@@ -54,36 +55,33 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>, click **Dashboard**. Backend and Database should show green.
+Open <http://localhost:5173>, then choose **Overview**, **Returns**, **Orders**, or **Agent activity**. The legacy `#/dashboard` route opens Overview.
 
-**3. AI (needs a Nebius key)**
+**3. NVIDIA assistant**
 
-```bash
-# from the repo root
-cp .env.example .env        # Windows: copy .env.example .env
-# edit .env and paste NEBIUS_API_KEY, then:
-cd backend
-python scripts/check_llm.py
-```
+The backend reads `NVIDIA_API_KEY`, `NVIDIA_MODEL`, and `NVIDIA_BASE_URL` from environment variables, root `.env`, or `backend/.env`. Defaults are `nvidia/nemotron-3.5-lightning-30b-a3b` and `https://integrate.api.nvidia.com/v1`. Keep the key in the backend environment only; never put it in `frontend/.env` or browser code. If NVIDIA configuration is absent or unavailable, return workflows remain usable and the assistant shows an error rather than inventing an answer.
 
-Success prints your `nvidia/*` model ids, then `Reply   : Cygnus online` and a latency. Copy the exact model id into `NEBIUS_MODEL_ID` in `.env`.
+The existing Nebius diagnostic remains available through `backend/scripts/check_llm.py` and uses its separate `NEBIUS_*` settings.
 
 ## Tests and checks
 
 ```bash
-cd backend  && python -m pytest -q      # expect: 3 passed
-cd frontend && npm run lint && npm run build   # expect: 0 warnings, built in <1s
+cd backend  && python -m pytest -q      # expect: 29 passed
+cd frontend && npm run lint && npm run build
 ```
 
 ## Project layout
 
 ```
-backend/app/main.py       API routes (health, AI status/ping)
+backend/app/main.py       API routes (health, AI diagnostics, orders, returns, activity)
 backend/app/config.py     The only place environment variables are read
 backend/app/db.py         SQLite connection helper
+backend/app/returns.py    Seed data, eligibility, simulated workflow, and event evidence
+backend/app/ai/nvidia.py  Read-only NVIDIA assistant and backend-context safeguards
 backend/app/ai/nebius.py  Nebius Token Factory client (server-side only)
 backend/scripts/          check_llm.py (validates the AI path)
-frontend/src/             React app (pages, hooks, api client)
+frontend/src/             v0 React app, styles, assets, and backend API adapter
+cygnus-j0-main/            Untouched extracted v0 source backup
 docs/                     Architecture, compliance, learning guide, plan
 ```
 

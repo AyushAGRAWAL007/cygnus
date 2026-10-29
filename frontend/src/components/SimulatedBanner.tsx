@@ -1,14 +1,14 @@
-import { FlaskConical } from 'lucide-react'
+import { cn } from '../lib/format'
 
-/** Shown wherever retailer data is not real. Honesty is a product feature. */
-export default function SimulatedBanner() {
+/** Always-visible reminder that the demo uses a simulated retailer, not real orders or refunds. */
+export default function SimulatedBanner({ className }: { className?: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <FlaskConical size={18} className="mt-0.5 shrink-0" />
-      <p>
-        <strong>Simulated demo.</strong> Cygnus runs against a simulated shopping platform. No real
-        order, pickup, or refund is created, and every simulated action is labelled as such.
-      </p>
-    </div>
+    <p className={cn('flex items-center gap-2.5 text-xs text-ink-soft', className)}>
+      <span aria-hidden="true" className="hatch inline-block h-3 w-5 shrink-0 rounded-[2px] text-cobalt/60 ring-1 ring-cobalt/30" />
+      <span>
+        <span className="font-medium text-cobalt-deep">Simulated retailer.</span>{' '}
+        No real orders, pickups, or refunds are created. Anything marked SIM is demo data.
+      </span>
+    </p>
   )
 }
