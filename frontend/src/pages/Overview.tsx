@@ -1,3 +1,4 @@
+import ShoppingMetrics from '../components/ShoppingMetrics'
 import { ArrowRight } from 'lucide-react'
 import AssistantPanel from '../components/assistant/AssistantPanel'
 import EventItem from '../components/activity/EventItem'
@@ -21,8 +22,8 @@ export default function Overview() {
   const returns = useResource('returns', listReturns)
   const activity = useResource('activity', listActivity)
 
-  if (returns.phase === 'loading') return <Loading label="Loading your returns" />
-  if (returns.phase === 'error') return <ErrorState message={returns.message} onRetry={returns.retry} />
+  if (returns.phase === 'loading') return <div className="flex flex-col gap-8"><ShoppingMetrics /><Loading label="Loading your returns" /></div>
+  if (returns.phase === 'error') return <div className="flex flex-col gap-8"><ShoppingMetrics /><ErrorState message={returns.message} onRetry={returns.retry} /></div>
 
   const all = returns.data
   const needs = all.filter((r) => r.health === 'needs_attention' || r.health === 'awaiting_approval')
@@ -32,11 +33,12 @@ export default function Overview() {
 
   return (
     <div className="flex flex-col gap-10">
-      <PageHeader eyebrow="Overview" title={needs.length ? <>Cygnus needs you on <em className="text-cobalt">{needs.length}</em> {needs.length === 1 ? 'return' : 'returns'}.</> : 'Everything is moving.'}>
+      <PageHeader eyebrow="Overview" title={needs.length ? <>Cygnus needs you on <em className="text-cobalt">{needs.length}</em> {needs.length === 1 ? 'return' : 'returns'}.</> : 'Your shopping, in view.'}>
         This simulated workflow currently has {open.length} open {open.length === 1 ? 'return' : 'returns'}. It asks for availability before a missed pickup can be rescheduled.
       </PageHeader>
 
-      <dl className="grid grid-cols-2 gap-6 md:grid-cols-4">
+      <ShoppingMetrics />
+      <dl aria-label="Simulated workflow metrics" className="grid grid-cols-2 gap-6 md:grid-cols-4">
         <Stat label="Open returns" value={String(open.length)} note={`${all.length - open.length} completed`} />
         <Stat label="Needs you" value={String(needs.length)} note="Pickup availability or rescheduling" />
         <Stat label="Refunds issued" value={String(refundsIssued)} note="Simulated evidence events" />

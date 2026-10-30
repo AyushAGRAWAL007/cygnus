@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { EmptyState, ErrorState, LinkButton, Loading, ProductThumb } from '../components/ui/Kit'
 import { useResource } from '../hooks/useResource'
 import { getReturn, recordCustomerAvailability, rescheduleSimulatedPickup } from '../lib/api'
-import { cn } from '../lib/format'
+import { cn, localDate } from '../lib/format'
 import { href } from '../lib/router'
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
@@ -20,7 +20,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 
 export default function Reschedule({ id }: { id: string }) {
   const res = useResource(`return:${id}`, () => getReturn(id))
-  const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const [today] = useState(() => localDate())
   const [availability, setAvailability] = useState('')
   const [pickupDate, setPickupDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -31,7 +31,7 @@ export default function Reschedule({ id }: { id: string }) {
   if (res.phase === 'error') return <ErrorState message={res.message} onRetry={res.retry} />
   const c = res.data
 
-  if (c.backendStatus !== 'missed_pickup' && c.backendStatus !== 'availability_collected') {
+  if (!sent && c.backendStatus !== 'missed_pickup' && c.backendStatus !== 'availability_collected') {
     return (
       <EmptyState title="Nothing to reschedule" action={<LinkButton href={href.return(c.id)} variant="secondary" size="sm">Back to the return</LinkButton>}>
         This simulated case has no missed pickup waiting for a new date.

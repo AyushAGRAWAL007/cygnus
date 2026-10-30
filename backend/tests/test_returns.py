@@ -1,3 +1,4 @@
+from .auth_support import sign_in_demo
 from datetime import date
 
 import pytest
@@ -11,6 +12,7 @@ from app.main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(get_settings(), "database_path", str(tmp_path / "cygnus.db"))
     with TestClient(app) as test_client:
+        sign_in_demo(test_client)
         yield test_client
 
 

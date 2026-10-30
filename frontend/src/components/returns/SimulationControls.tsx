@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { ArrowRight, LoaderCircle } from 'lucide-react'
 import { advanceSimulatedStatus, markSimulatedPickupMissed, scheduleSimulatedPickup } from '../../lib/api'
 import { href } from '../../lib/router'
+import { localDate } from '../../lib/format'
 import type { ReturnCase } from '../../lib/types'
 import { Button, LinkButton } from '../ui/Kit'
 
 export default function SimulationControls({ c }: { c: ReturnCase }) {
-  const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const [today] = useState(() => localDate())
   const [pickupDate, setPickupDate] = useState(today)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')

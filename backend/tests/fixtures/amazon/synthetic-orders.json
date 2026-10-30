@@ -1,0 +1,20 @@
+{
+  "format": "cygnus-amazon-v1",
+  "orders": [
+    {
+      "order_id": "123-1234567-1234567",
+      "marketplace": "amazon.in",
+      "order_date": "2026-10-01",
+      "currency": "INR",
+      "order_status": "Delivered",
+      "items": [
+        {
+          "product_name": "Synthetic test kettle",
+          "asin": "B012345678",
+          "quantity": 1,
+          "unit_price": "1299.50"
+        }
+      ]
+    }
+  ]
+}

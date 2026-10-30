@@ -1,8 +1,7 @@
-"""SQLite connection helper.
+"""SQLite connections with foreign-key enforcement and managed write cleanup.
 
-SQLite = a whole database stored in one file. For Cygnus it will hold orders,
-return requests and a timeline of every event. In Part 1 we only prove the
-file can be created and queried; tables arrive in Part 2.
+Normal exit commits pending writes. Setup, operation, and commit failures roll
+back pending work, and every successfully opened connection is closed.
 """
 import sqlite3
 from contextlib import contextmanager
@@ -14,10 +13,21 @@ from .config import get_settings
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(get_settings().database_path)
-    conn.row_factory = sqlite3.Row
     try:
+        # SQLite ignores this setting inside a transaction: enable it before
+        # handing the connection to callers, including startup initialization.
+        conn.execute("PRAGMA foreign_keys = ON")
+        enabled = conn.execute("PRAGMA foreign_keys").fetchone()
+        if enabled is None or enabled[0] != 1:
+            raise sqlite3.OperationalError("SQLite foreign-key enforcement could not be enabled")
+        conn.row_factory = sqlite3.Row
         yield conn
         conn.commit()
+    except BaseException:
+        # Also covers commit-time constraint failures and interrupted requests.
+        if conn.in_transaction:
+            conn.rollback()
+        raise
     finally:
         conn.close()
 

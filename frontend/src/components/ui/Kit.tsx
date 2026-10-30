@@ -7,7 +7,7 @@ export function ProductThumb({ src, alt, size = 'md', className }: { src?: strin
   const s = { xs: 'size-8', sm: 'size-11', md: 'size-14', fill: 'w-full' }[size]
   return (
     <span className={cn('block aspect-square shrink-0 overflow-hidden rounded-md bg-bone ring-1 ring-line', s, className)}>
-      {src ? <img src={src} alt={alt} loading="lazy" className="size-full object-cover" /> : <span className="grid size-full place-items-center text-mute" aria-label={alt || 'No product image available'}><ImageOff className="size-5" aria-hidden="true" /></span>}
+      {src ? <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover" /> : <span className="grid size-full place-items-center text-mute" aria-label={alt || 'No product image available'}><ImageOff className="size-5" aria-hidden="true" /></span>}
     </span>
   )
 }
@@ -97,15 +97,14 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
   label: string
 }) {
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1">
+    <div role="group" aria-label={label} className="flex gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1">
       {options.map((o) => {
         const active = o.value === value
         return (
           <button
             key={o.value}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
               'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm transition-colors',

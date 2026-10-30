@@ -4,7 +4,12 @@ const dayLongFmt = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'l
 const shortFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
 const timeFmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
 
-export const money = (n: number) => usd.format(n)
+export const money = (n: number | null | undefined, currency: string | null = 'USD') => {
+  if (n == null || !Number.isFinite(n)) return 'Unknown amount'
+  if (!currency) return `${n.toLocaleString()} (currency unknown)`
+  try { return currency === 'USD' ? usd.format(n) : new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(n) }
+  catch { return `${n.toLocaleString()} ${currency}` }
+}
 export const day = (iso: string) => dayFmt.format(new Date(iso))
 export const dayLong = (iso: string) => dayLongFmt.format(new Date(iso))
 export const shortDate = (iso: string) => shortFmt.format(new Date(iso))
@@ -28,3 +33,8 @@ export function daysUntil(iso: string, now = Date.now()): number {
 }
 
 export const cn = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(' ')
+
+
+export function localDate(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}

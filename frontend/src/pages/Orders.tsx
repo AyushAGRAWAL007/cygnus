@@ -1,127 +1,39 @@
-import { ArrowUpRight, Check, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
-import { SimTag } from '../components/ui/Evidence'
-import { Button, EmptyState, ErrorState, Loading, PageHeader, ProductThumb } from '../components/ui/Kit'
+import { Button, EmptyState, ErrorState, Loading, PageHeader } from '../components/ui/Kit'
+import ImportHub from '../components/imports/ImportHub'
 import { useResource } from '../hooks/useResource'
-import { checkReturnEligibility, createReturnFromOrder, listOrders } from '../lib/api'
-import type { EligibilityResult, Order, OrderItem } from '../lib/types'
-import { cn, daysUntil, money, shortDate } from '../lib/format'
+import { amount, shoppingOrders } from '../lib/shopping'
 import { href } from '../lib/router'
+import LegacyOrders from './LegacyOrders'
 
 export default function Orders() {
-  const orders = useResource('orders', listOrders)
-  const [selected, setSelected] = useState<{ order: Order; item: OrderItem } | null>(null)
-  const [reason, setReason] = useState('wrong_size')
-  const [eligibility, setEligibility] = useState<EligibilityResult | null>(null)
-  const [checking, setChecking] = useState(false)
-  const [error, setError] = useState('')
-
-  async function check(order: Order, item: OrderItem) {
-    setSelected({ order, item })
-    setEligibility(null)
-    setError('')
-    setChecking(true)
-    try {
-      setEligibility(await checkReturnEligibility({ order_id: order.id, item_id: item.id, reason }))
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Could not check simulated eligibility')
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  async function createCase() {
-    if (!selected) return
-    setChecking(true)
-    setError('')
-    try {
-      const created = await createReturnFromOrder({ order_id: selected.order.id, item_id: selected.item.id, reason })
-      window.location.hash = href.return(created.id)
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Could not create simulated return')
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-8">
-      <PageHeader eyebrow="Orders" title="Orders Cygnus can see.">
-        Cygnus reads these to check return windows and policies. Return windows closing within a week are highlighted.
-      </PageHeader>
-
-      {orders.phase === 'loading' && <Loading label="Loading orders" />}
-      {orders.phase === 'error' && <ErrorState message={orders.message} onRetry={orders.retry} />}
-      {orders.phase === 'ready' && orders.data.length === 0 && <EmptyState title="No seeded orders">The backend has no simulated orders to display.</EmptyState>}
-      {orders.phase === 'ready' && orders.data.length > 0 && (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(17rem,0.8fr)]">
-          <ul className="grid gap-4 md:grid-cols-2">
-            {orders.data.map((order) => {
-              const left = daysUntil(order.returnWindowEndsAt)
-              return (
-                <li key={order.id} className="flex flex-col gap-4 rounded-xl border border-line bg-paper p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="flex items-center gap-2 text-xs text-mute"><span className="num">{order.id}</span><SimTag /></p>
-                      <p className="mt-1 font-medium">{order.retailer}</p>
-                    </div>
-                    <p className="num font-display text-2xl" title="Sum of seeded item prices; tax and shipping are not available">{money(order.total)}<span className="block text-right font-sans text-[10px] text-mute">items subtotal</span></p>
-                  </div>
-                  <ul className="flex flex-col gap-3">
-                    {order.items.map((item) => (
-                      <li key={item.sku} className="flex items-center gap-3">
-                        <ProductThumb src={item.image} alt={item.image ? item.name : ''} size="sm" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{item.name}</p>
-                          <p className="truncate text-xs text-mute">SKU {item.sku} · Qty {item.qty}</p>
-                        </div>
-                        <span className="num text-sm">{money(item.price)}</span>
-                        <Button variant="secondary" size="sm" onClick={() => void check(order, item)}>Check policy</Button>
-                      </li>
-                    ))}
-                  </ul>
-                  <dl className="grid grid-cols-2 gap-3 border-t border-line pt-4 text-xs">
-                    <div><dt className="text-mute">Ordered</dt><dd className="num mt-0.5 text-ink">{shortDate(order.placedAt)}</dd></div>
-                    <div>
-                      <dt className="text-mute">Simulated return window</dt>
-                      <dd className={cn('num mt-0.5', left <= 0 ? 'text-mute' : left <= 7 ? 'font-medium text-warn' : 'text-ink')}>
-                        {left > 0 ? `${left} days left` : 'Closed'}
-                      </dd>
-                    </div>
-                  </dl>
-                  {order.returnId && <a href={href.return(order.returnId)} className="inline-flex w-fit items-center gap-1 text-sm font-medium text-cobalt hover:text-cobalt-deep">View return {order.returnId} <ArrowUpRight className="size-3.5" aria-hidden="true" /></a>}
-                </li>
-              )
-            })}
-          </ul>
-          <section aria-labelledby="eligibility" className="h-fit rounded-xl border border-line bg-paper p-5">
-            <h2 id="eligibility" className="font-medium">Simulated eligibility check</h2>
-            {!selected && <p className="mt-2 text-sm text-mute">Choose an order item to check the backend return policy.</p>}
-            {selected && (
-              <>
-                <p className="mt-2 text-sm text-ink-soft">{selected.item.name} · {selected.order.id}</p>
-                <label className="mt-4 block text-sm font-medium">Reason
-                  <select value={reason} onChange={(event) => { setReason(event.target.value); setEligibility(null) }} className="mt-1 h-10 w-full rounded-lg border border-line-strong bg-paper px-3">
-                    <option value="wrong_size">Wrong size</option>
-                    <option value="damaged">Damaged</option>
-                    <option value="not_as_described">Not as described</option>
-                    <option value="changed_mind">Changed my mind</option>
-                  </select>
-                </label>
-                {checking && <p role="status" className="mt-3 flex items-center gap-2 text-sm text-mute"><LoaderCircle className="size-4 animate-spin" />Checking policy…</p>}
-                {error && <p role="alert" className="mt-3 rounded-lg bg-bad-wash p-3 text-sm text-bad">{error}</p>}
-                {eligibility && (
-                  <div className={cn('mt-4 rounded-lg p-3 text-sm', eligibility.eligible ? 'bg-ok-wash text-ok' : 'bg-warn-wash text-warn')}>
-                    <p className="font-medium">{eligibility.eligible ? 'Eligible under simulated policy' : 'Not eligible'}</p>
-                    {!eligibility.eligible && <ul className="mt-1 list-inside list-disc">{eligibility.reasons.map((item) => <li key={item}>{item}</li>)}</ul>}
-                  </div>
-                )}
-                {eligibility?.eligible && <Button disabled={checking} onClick={() => void createCase()} className="mt-4 w-full"><Check className="size-4" aria-hidden="true" /> Create simulated return</Button>}
-              </>
-            )}
-          </section>
-        </div>
-      )}
-    </div>
-  )
+  const [filters, setFilters] = useState({ q: '', retailer: '', date_from: '', date_to: '', status: '', sort: 'newest', currency: '', scope: 'all', page_size: '20' })
+  const [page, setPage] = useState(1)
+  const [legacyOpen, setLegacyOpen] = useState(false)
+  const params = new URLSearchParams(Object.entries({ ...filters, page: String(page) }).filter(([key, value]) => value !== '' && (key !== 'currency' || value.length === 3)))
+  const orders = useResource(`shopping-orders:${params}`, () => shoppingOrders(params))
+  function change(key: keyof typeof filters, value: string) { setFilters(f => ({ ...f, [key]: value, ...(key === 'currency' && value.length !== 3 ? { sort: 'newest' } : {}) })); setPage(1) }
+  return <div className="flex flex-col gap-8">
+    <PageHeader eyebrow="All Orders" title="Your purchases, together.">Search recorded purchases and review their sources. Connecting Gmail, syncing messages and confirming an import are separate steps.</PageHeader>
+    <ImportHub />
+    <form className="grid gap-3 rounded-xl border border-line bg-paper p-5 sm:grid-cols-2 lg:grid-cols-3" onSubmit={e => e.preventDefault()}>
+      <label className="text-sm">Search product or order ID<input maxLength={200} aria-label="Search orders" className="shopping-input" value={filters.q} onChange={e => change('q', e.target.value)} /></label>
+      <label className="text-sm">Retailer<input aria-label="Retailer" className="shopping-input" list="retailer-options" value={filters.retailer} onChange={e => change('retailer', e.target.value)} /><datalist id="retailer-options">{orders.phase === 'ready' && orders.data.retailers.map(r => <option key={r} value={r} />)}</datalist></label>
+      <label className="text-sm">Status<input className="shopping-input" list="status-options" value={filters.status} onChange={e => change('status', e.target.value)} /><datalist id="status-options">{orders.phase === 'ready' && orders.data.statuses.map(s => <option key={s} value={s} />)}</datalist></label>
+      <label className="text-sm">From date<input type="date" className="shopping-input" value={filters.date_from} onChange={e => change('date_from', e.target.value)} /></label>
+      <label className="text-sm">To date<input type="date" className="shopping-input" value={filters.date_to} onChange={e => change('date_to', e.target.value)} /></label>
+      <label className="text-sm">Currency (ISO code)<input aria-label="Currency" className="shopping-input" maxLength={3} value={filters.currency} placeholder="All currencies" onChange={e => change('currency', e.target.value.toUpperCase())} /></label>
+      <label className="text-sm">Sort<select aria-label="Sort orders" className="shopping-input" value={filters.sort} onChange={e => change('sort', e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option disabled={filters.currency.length !== 3} value="amount_desc">Highest amount (select currency)</option><option disabled={filters.currency.length !== 3} value="amount_asc">Lowest amount (select currency)</option></select></label>
+      <label className="text-sm">Records<select className="shopping-input" value={filters.scope} onChange={e => change('scope', e.target.value)}><option value="all">All records</option><option value="real">Real purchases</option><option value="demo">Demo only</option></select></label>
+      <label className="text-sm">Page size<select className="shopping-input" value={filters.page_size} onChange={e => change('page_size', e.target.value)}>{[10,20,50].map(n => <option key={n}>{n}</option>)}</select></label>
+    </form>
+    {orders.phase === 'loading' && <Loading label="Loading purchases" />}
+    {orders.phase === 'error' && <ErrorState message={orders.message} onRetry={orders.retry} />}
+    {orders.phase === 'ready' && <>
+      <p className="text-sm text-mute">{orders.data.total} matching orders · Unknown amounts sort last.</p>
+      {!orders.data.items.length ? <EmptyState title="No matching orders">Sync Gmail or upload a supported file, then confirm the preview. Try clearing filters to see other purchases. Returns appear only when recorded.</EmptyState> : <ul className="grid gap-4 md:grid-cols-2">{orders.data.items.map(order => <li key={order.id} className="min-w-0 rounded-xl border border-line bg-paper p-5"><div className="flex justify-between gap-3"><h2 className="font-medium">{order.retailer}</h2><span className="text-xs text-mute">{order.simulated ? 'Demo' : 'Imported'}</span></div><p className="mt-2 break-all text-xs text-mute">{order.external_order_id ?? order.id} · {order.order_date ?? 'Unknown date'}</p><p className="mt-3 font-display text-2xl">{amount(order.total_amount, order.currency)}</p><p className="text-xs text-mute">Charged total · {order.order_status ?? 'Unknown status'}</p><p className="mt-3 text-sm">{order.items.map(i => i.name).join(', ') || 'Unknown items'}</p><p className="mt-2 text-xs text-mute">{order.quantity} known quantity · {order.unknown_quantities} unknown · Refund: {order.refund_status || 'Unknown'}</p><p className="mt-2 text-xs text-mute">Sources: {order.sources.join(', ') || order.source || 'Unknown'}</p><a className="mt-4 inline-block text-sm text-cobalt underline" href={href.order(order.id)}>View order and refunds</a></li>)}</ul>}
+      <div className="flex items-center justify-between gap-3"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button><span className="text-sm">Page {page} of {Math.max(1, Math.ceil(orders.data.total / Number(filters.page_size)))}</span><Button variant="secondary" disabled={page * Number(filters.page_size) >= orders.data.total} onClick={() => setPage(p => p + 1)}>Next</Button></div>
+    </>}
+    <details className="rounded-xl border border-line p-5" onToggle={e => setLegacyOpen(e.currentTarget.open)}><summary className="cursor-pointer font-medium">Existing order policy checks and simulated return actions</summary>{legacyOpen && <div className="mt-6"><LegacyOrders /></div>}</details>
+  </div>
 }

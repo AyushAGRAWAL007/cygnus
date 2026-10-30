@@ -28,7 +28,7 @@ export interface AssistantReply {
   answer: string
   model: string
   facts: string[]
-  data_source: 'simulated'
+  data_source: 'simulated' | 'imported'
 }
 
 export interface AssistantRequest {
@@ -40,10 +40,12 @@ export interface AssistantRequest {
 export interface OrderItem {
   id: string
   name: string
-  sku: string
-  quantity: number
-  price: number
-  return_window_days: number
+  sku: string | null
+  quantity: number | null
+  price: number | null
+  unit_price?: string | null
+  currency?: string | null
+  return_window_days: number | null
   final_sale: boolean
 }
 
@@ -53,6 +55,11 @@ export interface Order {
   order_date: string
   simulated: boolean
   items: OrderItem[]
+  source?: 'demo' | 'amazon_file' | 'gmail'
+  currency?: string | null
+  external_order_id?: string | null
+  order_status?: string | null
+  sources?: string[]
 }
 
 export type ReturnStatus =
@@ -110,19 +117,34 @@ export interface ReturnRequest {
   reason: string
 }
 
-async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init)
+export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  if (init.method && !['GET', 'HEAD', 'OPTIONS'].includes(init.method.toUpperCase())) {
+    headers.set('X-Cygnus-CSRF', '1')
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  }
+  const res = await fetch(`${BASE}${path}`, { ...init, headers, credentials: 'include' })
   if (!res.ok) {
-    let message = `Backend responded ${res.status}`
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      window.dispatchEvent(new Event('cygnus:unauthorized'))
+    }
+    let message = res.status === 502
+      ? 'The gateway could not get a valid response from the backend (502). Check that the backend is running and the frontend proxy uses the same port, then retry.'
+      : res.status === 504
+        ? 'The backend took too long to respond (504). Check the backend terminal for errors, then retry.'
+        : res.status === 503
+          ? 'The backend is temporarily unavailable (503). Check its terminal for errors, then retry.'
+          : `The request failed (HTTP ${res.status}). Please retry.`
     try {
       const body = await res.json()
       if (typeof body.detail === 'string') message = body.detail
       else if (typeof body.detail?.message === 'string') message = body.detail.message
-      else if (body.detail) message = JSON.stringify(body.detail)
+      else if (Array.isArray(body.detail)) message = body.detail.map((item: { msg?: string }) => item.msg ?? 'Invalid input').join('. ')
+      else if (body.detail) message = 'The request could not be completed.'
     } catch {
       // Keep the HTTP status message when the response is not JSON.
     }
-    throw new Error(message)
+    throw new ApiError(message, res.status)
   }
   return res.json() as Promise<T>
 }
@@ -217,7 +239,7 @@ export function subscribe(listener: () => void) {
   }
 }
 
-function notifyChange() {
+export function notifyChange() {
   changeListeners.forEach((listener) => listener())
 }
 
@@ -231,11 +253,12 @@ function imageFor(itemId: string): string | undefined {
 function toViewItem(item: OrderItem): ViewOrderItem {
   return {
     id: item.id,
-    sku: item.sku,
+    sku: item.sku ?? 'Unknown identifier',
     name: item.name,
-    variant: item.sku,
+    variant: item.sku ?? undefined,
     image: imageFor(item.id),
     price: item.price,
+    currency: item.currency,
     qty: item.quantity,
     returnWindowDays: item.return_window_days,
     finalSale: item.final_sale,
@@ -245,18 +268,22 @@ function toViewItem(item: OrderItem): ViewOrderItem {
 function toViewOrder(order: Order, cases: ReturnCase[]): ViewOrder {
   const items = order.items.map(toViewItem)
   const latestCase = cases.find((item) => item.order_id === order.id)
-  const returnWindowDays = Math.max(0, ...order.items.map((item) => item.return_window_days))
+  const returnWindowDays = Math.max(0, ...order.items.map((item) => item.return_window_days ?? 0))
   const returnWindowEnd = new Date(`${order.order_date}T00:00:00`)
   returnWindowEnd.setDate(returnWindowEnd.getDate() + returnWindowDays)
   return {
     id: order.id,
     retailer: order.retailer,
     placedAt: order.order_date,
-    total: items.reduce((sum, item) => sum + item.price * item.qty, 0),
-    returnWindowEndsAt: returnWindowEnd.toISOString(),
+    total: items.every(i => i.price !== null && i.qty !== null && (!i.currency || i.currency === order.currency)) ? items.reduce((sum, item) => sum + item.price! * item.qty!, 0) : null,
+    currency: order.currency,
+    externalOrderId: order.external_order_id,
+    orderStatus: order.order_status,
+    sources: order.sources,
+    returnWindowEndsAt: order.simulated ? returnWindowEnd.toISOString() : '',
     items,
     returnId: latestCase?.id,
-    source: simulatedSource,
+    source: order.simulated ? simulatedSource : order.source === 'gmail' ? 'gmail' : 'amazon_file',
   }
 }
 
@@ -342,7 +369,7 @@ function toViewReturn(apiCase: ReturnCase, order: Order): ViewReturnCase {
     { id: 'credited', status: 'not_started', note: 'No bank or card credit evidence is available.' },
   ]
   const returnWindowEnd = new Date(`${order.order_date}T00:00:00`)
-  returnWindowEnd.setDate(returnWindowEnd.getDate() + item.return_window_days)
+  returnWindowEnd.setDate(returnWindowEnd.getDate() + (item.return_window_days ?? 0))
   return {
     id: apiCase.id,
     backendStatus: apiCase.status,
@@ -435,3 +462,17 @@ export const rescheduleSimulatedPickup = (caseId: string, pickupDate: string) =>
   mutateView(reschedulePickup(caseId, pickupDate))
 export const advanceSimulatedStatus = (caseId: string, status: string) =>
   mutateView(advanceSimulation(caseId, status))
+
+
+export class ApiError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) { super(message); this.status = status }
+}
+
+export interface AuthUser { id: string; email: string; display_name: string; email_verified: boolean }
+export interface LoginInput { email: string; password: string }
+export interface RegisterInput extends LoginInput { display_name: string }
+export const fetchCurrentUser = (signal?: AbortSignal) => requestJson<AuthUser>('/api/auth/me', { signal })
+export const loginAccount = (input: LoginInput) => requestJson<AuthUser>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) })
+export const registerAccount = (input: RegisterInput) => requestJson<AuthUser>('/api/auth/register', { method: 'POST', body: JSON.stringify(input) })
+export const logoutAccount = () => requestJson<{ message: string }>('/api/auth/logout', { method: 'POST', body: '{}' })

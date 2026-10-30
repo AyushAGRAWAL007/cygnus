@@ -1,4 +1,4 @@
-export type Source = 'simulated'
+export type Source = 'simulated' | 'amazon_file' | 'gmail'
 export type Evidence = 'recorded' | 'confirmed' | 'pending' | 'unverified' | 'failed' | 'not_started'
 export type Stage = 'requested' | 'eligible' | 'pickup' | 'in_transit' | 'received' | 'refunded' | 'credited'
 export const STAGES: { id: Stage; label: string; short: string }[] = [
@@ -20,13 +20,14 @@ export interface Product {
   name: string
   variant?: string
   image?: string
-  price: number
+  price: number | null
+  currency?: string | null
 }
 
 export interface OrderItem extends Product {
   id: string
-  qty: number
-  returnWindowDays: number
+  qty: number | null
+  returnWindowDays: number | null
   finalSale: boolean
 }
 
@@ -35,7 +36,11 @@ export interface Order {
   retailer: string
   placedAt: string
   deliveredAt?: string
-  total: number
+  total: number | null
+  currency?: string | null
+  externalOrderId?: string | null
+  orderStatus?: string | null
+  sources?: string[]
   payment?: string
   returnWindowEndsAt: string
   items: OrderItem[]

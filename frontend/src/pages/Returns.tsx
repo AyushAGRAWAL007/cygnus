@@ -21,8 +21,8 @@ export default function Returns() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="Returns" title="Every return, and where it stands.">
-        Each row shows the next step and who owns it. Open one to see the evidence behind every status.
+      <PageHeader eyebrow="Returns & Refunds" title="Every return, and where it stands.">
+        Each row shows the next step and who owns it. Open one to see the evidence behind every status. Record pending or received refunds from an order detail in All Orders.
       </PageHeader>
 
       {returns.phase === 'loading' && <Loading label="Loading returns" />}

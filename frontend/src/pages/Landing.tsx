@@ -8,6 +8,7 @@ import { LinkButton, ProductThumb } from '../components/ui/Kit'
 import { useResource } from '../hooks/useResource'
 import { listReturns } from '../lib/api'
 import { href } from '../lib/router'
+import { useAuth } from '../lib/authContext'
 import type { ReturnCase } from '../lib/types'
 
 const steps = [
@@ -54,7 +55,8 @@ function HeroPreview({ c }: { c?: ReturnCase }) {
 }
 
 export default function Landing() {
-  const cases = useResource('landing:returns', listReturns)
+  const auth = useAuth()
+  const cases = useResource(`landing:returns:${auth.user?.id ?? 'public'}`, () => auth.user ? listReturns() : Promise.resolve([]))
   const featured = cases.phase === 'ready' ? cases.data[0] : undefined
 
   return (
@@ -65,7 +67,7 @@ export default function Landing() {
           <div className="rise">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-cobalt">A simulated returns workspace</p>
             <h1 className="mt-4 font-display text-5xl leading-[1.02] tracking-tight text-balance md:text-7xl">
-              Returns, handled. <em className="text-mute">Refunds, proven.</em>
+              Returns, handled. <em className="text-mute">Progress, explained.</em>
             </h1>
             <p className="mt-6 max-w-lg text-lg text-ink-soft text-pretty">
               Explore seeded orders and a simulated return from eligibility to refund issuance. No retailer, courier, payment network, or bank is connected.

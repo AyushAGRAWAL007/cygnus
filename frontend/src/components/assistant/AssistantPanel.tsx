@@ -77,7 +77,7 @@ export default function AssistantPanel({ cases }: { cases: ReturnCase[] }) {
                 <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-cobalt">AI-generated explanation · {turn.reply.model}</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">{turn.reply.answer}</p>
                 <div className="mt-4 border-t border-line pt-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-mute">Backend-recorded simulated facts</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-mute">{turn.reply.data_source === 'imported' ? 'Imported facts · unverified' : 'Backend-recorded simulated facts'}</p>
                   <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-ink-soft">
                     {turn.reply.facts.map((fact, index) => <li key={`${turn.id}-${index}`}>{fact}</li>)}
                   </ul>
@@ -107,7 +107,7 @@ export default function AssistantPanel({ cases }: { cases: ReturnCase[] }) {
           </div>
           <div className="flex items-end gap-2">
             <label className="sr-only" htmlFor="assistant-message">Message Cygnus AI</label>
-            <textarea id="assistant-message" value={message} onChange={(event) => setMessage(event.target.value)} maxLength={2000} rows={2} placeholder="Ask a question about this simulated return…" className="min-h-11 flex-1 resize-y rounded-lg border border-line-strong bg-white px-3 py-2 text-sm placeholder:text-mute focus:border-cobalt focus:outline-none" />
+            <textarea id="assistant-message" value={message} onChange={(event) => setMessage(event.target.value)} maxLength={2000} rows={2} placeholder="Ask a question about this simulated return…" className="min-h-11 min-w-0 flex-1 resize-y rounded-lg border border-line-strong bg-white px-3 py-2 text-sm placeholder:text-mute focus:border-cobalt focus:outline-none" />
             <button type="submit" disabled={busy || aiUnavailable || !message.trim()} title={aiUnavailable ? 'NVIDIA AI is unavailable' : 'Send message'} className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-paper hover:bg-cobalt-deep disabled:cursor-not-allowed disabled:opacity-50"><Send className="size-4" aria-hidden="true" /></button>
           </div>
           <p className="mt-2 text-[11px] text-mute">Maximum 2,000 characters · Responses are suggestions; backend facts and workflow rules are authoritative.</p>

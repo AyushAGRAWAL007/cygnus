@@ -2,6 +2,7 @@ import { ArrowRight } from 'lucide-react'
 import { href } from '../lib/router'
 import { Wordmark } from './brand/Wordmark'
 import { LinkButton } from './ui/Kit'
+import AccountControl from './AccountControl'
 
 /** Top navigation for the public landing page. The workspace uses AppShell instead. */
 export default function Nav() {
@@ -12,9 +13,12 @@ export default function Nav() {
         <nav aria-label="Main" className="flex items-center gap-1 text-sm">
           <a href="#how" className="hidden rounded-full px-3 py-2 text-ink-soft hover:text-ink sm:block">How it works</a>
           <a href="#evidence" className="hidden rounded-full px-3 py-2 text-ink-soft hover:text-ink sm:block">Evidence</a>
-          <LinkButton href={href.overview} size="sm" className="ml-2">
-            Open workspace <ArrowRight className="size-3.5" aria-hidden="true" />
-          </LinkButton>
+          <AccountControl />
+          <span className="hidden sm:contents">
+            <LinkButton href={href.overview} size="sm" className="ml-2">
+              Open workspace <ArrowRight className="size-3.5" aria-hidden="true" />
+            </LinkButton>
+          </span>
         </nav>
       </div>
     </header>

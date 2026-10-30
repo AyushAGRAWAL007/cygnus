@@ -4,3 +4,7 @@ pydantic-settings==2.16.2
 openai==3.41.0
 httpx==0.28.1
 pytest==9.2.0
+argon2-cffi==25.1.0
+email-validator==2.3.0
+slowapi==0.1.9
+cryptography==50.0.2

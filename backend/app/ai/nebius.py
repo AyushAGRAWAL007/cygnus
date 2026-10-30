@@ -20,12 +20,13 @@ def get_client() -> OpenAI:
     s = get_settings()
     if not s.ai_configured:
         raise AINotConfigured("NEBIUS_API_KEY is not set. Copy .env.example to .env and add it.")
-    return OpenAI(api_key=s.nebius_api_key.get_secret_value(), base_url=s.nebius_base_url)
+    return OpenAI(api_key=s.nebius_api_key.get_secret_value(), base_url=s.nebius_base_url, timeout=20.0, max_retries=0)
 
 
 def list_model_ids() -> list[str]:
     """Every model id this account can call (the source of truth for exact ids)."""
-    return sorted(m.id for m in get_client().models.list().data)
+    with get_client() as client:
+        return sorted(m.id for m in client.models.list().data)
 
 
 def list_nvidia_model_ids() -> list[str]:
@@ -36,12 +37,13 @@ def ping(prompt: str = "Reply with exactly: Cygnus online") -> dict:
     """One tiny real inference call. Returns text, model and latency."""
     s = get_settings()
     start = time.perf_counter()
-    resp = get_client().chat.completions.create(
-        model=s.nebius_model_id,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=64,
-        temperature=0.2,
-    )
+    with get_client() as client:
+        resp = client.chat.completions.create(
+            model=s.nebius_model_id,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=64,
+            temperature=0.2,
+        )
     return {
         "model": resp.model,
         "text": (resp.choices[0].message.content or "").strip(),

@@ -62,7 +62,10 @@ def initialize() -> None:
             );
             """
         )
-        if conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0:
+        # Demo seeding belongs only to the original pre-account bootstrap.
+        # An empty migrated customer store is legitimate and must remain empty.
+        has_accounts = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        if not has_accounts and conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0:
             _seed(conn)
 
 
@@ -148,27 +151,53 @@ def _case(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     }
 
 
-def _get_case(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
-    row = conn.execute("SELECT * FROM return_cases WHERE id = ?", (case_id,)).fetchone()
+def _get_case(conn: sqlite3.Connection, case_id: str, user_id: str | None = None) -> sqlite3.Row:
+    if user_id is None:
+        row = conn.execute("SELECT * FROM return_cases WHERE id = ?", (case_id,)).fetchone()
+    else:
+        row = conn.execute("""SELECT return_cases.* FROM return_cases
+            JOIN orders ON orders.id=return_cases.order_id
+            JOIN order_items ON order_items.id=return_cases.item_id AND order_items.order_id=orders.id
+            WHERE return_cases.id=? AND orders.user_id=?""", (case_id, user_id)).fetchone()
     if row is None:
         raise WorkflowError(404, "Return case not found")
     return row
 
 
-def list_orders() -> dict:
+def list_orders(user_id: str | None = None, order_id: str | None = None) -> dict:
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM orders ORDER BY order_date DESC, id").fetchall()
+        filters, parameters = [], []
+        if user_id is not None:
+            filters.append("user_id=?"); parameters.append(user_id)
+        if order_id is not None:
+            filters.append("id=?"); parameters.append(order_id)
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        rows = conn.execute("SELECT * FROM orders" + where + " ORDER BY order_date DESC, id", parameters).fetchall()
+        # Fetch items once instead of once per order.
+        item_rows = conn.execute("SELECT order_items.* FROM order_items JOIN orders ON orders.id=order_items.order_id" + (" WHERE orders.user_id=?" if user_id is not None else "") + " ORDER BY order_items.id", (user_id,) if user_id is not None else ()).fetchall()
+        by_order = {}
+        for item in item_rows:
+            by_order.setdefault(item["order_id"], []).append(item)
         items = []
+        source_map = {}
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='order_source_references'").fetchone():
+            source_rows = conn.execute("SELECT DISTINCT order_id,source FROM order_source_references" + (" WHERE user_id=?" if user_id is not None else ""), (user_id,) if user_id is not None else ()).fetchall()
+            for source_row in source_rows:
+                source_map.setdefault(source_row["order_id"], []).append(source_row["source"])
         for order in rows:
-            order_items = conn.execute(
-                "SELECT * FROM order_items WHERE order_id = ? ORDER BY id", (order["id"],)
-            ).fetchall()
+            order_items = by_order.get(order["id"], [])
             items.append(
                 {
                     "id": order["id"],
                     "retailer": order["retailer"],
                     "order_date": order["order_date"],
                     "simulated": bool(order["simulated"]),
+                    "source": order["source"] if "source" in order.keys() else "demo",
+                    "external_order_id": order["external_order_id"] if "external_order_id" in order.keys() else None,
+                    "currency": order["currency"] if "currency" in order.keys() else "USD",
+                    "order_status": order["order_status"] if "order_status" in order.keys() else None,
+                    "marketplace": order["marketplace"] if "marketplace" in order.keys() else None,
+                    "sources": source_map.get(order["id"], []),
                     "items": [
                         {
                             "id": item["id"],
@@ -178,54 +207,67 @@ def list_orders() -> dict:
                             "price": item["price"],
                             "return_window_days": item["return_window_days"],
                             "final_sale": bool(item["final_sale"]),
+                            "unit_price": item["unit_price"] if "unit_price" in item.keys() else str(item["price"]),
+                            "currency": item["currency"] if "currency" in item.keys() else "USD",
                         }
                         for item in order_items
                     ],
                 }
             )
-        return {"items": items, "simulated": True}
+        return {"items": items, "simulated": all(o["simulated"] for o in items)}
 
 
-def get_order(order_id: str) -> dict:
-    result = next((order for order in list_orders()["items"] if order["id"] == order_id), None)
+def get_order(order_id: str, user_id: str | None = None) -> dict:
+    result = next((order for order in list_orders(user_id, order_id)["items"] if order["id"] == order_id), None)
     if result is None:
         raise WorkflowError(404, "Order not found")
     return result
 
 
-def eligibility(order_id: str, item_id: str) -> dict:
+def _eligibility(conn, order_id: str, item_id: str, user_id: str | None = None) -> dict:
     reasons = []
-    with connect() as conn:
-        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        item = conn.execute(
-            "SELECT * FROM order_items WHERE id = ? AND order_id = ?", (item_id, order_id)
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    item = conn.execute(
+        "SELECT * FROM order_items WHERE id = ? AND order_id = ?", (item_id, order_id)
+    ).fetchone()
+    if user_id is not None:
+        owned = conn.execute("SELECT 1 FROM orders WHERE id=? AND user_id=?", (order_id, user_id)).fetchone()
+        if owned is None or item is None:
+            raise WorkflowError(404, "Order item not found")
+    if order is None:
+        reasons.append("order not found")
+    if item is None:
+        reasons.append("item not found on this order")
+    if order is not None and item is not None:
+        if not order["simulated"]:
+            return {"eligible": False, "reasons": ["Retailer return eligibility is not verified. Check the order in Amazon; Cygnus cannot arrange a real pickup or refund."], "simulated": False, "verification": "unknown"}
+        age_days = (date.today() - date.fromisoformat(order["order_date"])).days
+        if age_days > item["return_window_days"]:
+            reasons.append("return window has expired")
+        if item["final_sale"]:
+            reasons.append("item is final sale")
+        active = conn.execute(
+            "SELECT 1 FROM return_cases WHERE order_id = ? AND item_id = ? AND resolved = 0",
+            (order_id, item_id),
         ).fetchone()
-        if order is None:
-            reasons.append("order not found")
-        if item is None:
-            reasons.append("item not found on this order")
-        if order is not None and item is not None:
-            age_days = (date.today() - date.fromisoformat(order["order_date"])).days
-            if age_days > item["return_window_days"]:
-                reasons.append("return window has expired")
-            if item["final_sale"]:
-                reasons.append("item is final sale")
-            active = conn.execute(
-                "SELECT 1 FROM return_cases WHERE order_id = ? AND item_id = ? AND resolved = 0",
-                (order_id, item_id),
-            ).fetchone()
-            if active:
-                reasons.append("return case already exists")
+        if active:
+            reasons.append("return case already exists")
     return {"eligible": not reasons, "reasons": reasons, "simulated": True}
 
 
-def create_case(order_id: str, item_id: str, reason: str) -> dict:
-    check = eligibility(order_id, item_id)
-    if not check["eligible"]:
-        raise WorkflowError(409, {"message": "Return is not eligible", "reasons": check["reasons"]})
+def eligibility(order_id: str, item_id: str, user_id: str | None = None) -> dict:
+    with connect() as conn:
+        return _eligibility(conn, order_id, item_id, user_id)
+
+
+def create_case(order_id: str, item_id: str, reason: str, user_id: str | None = None) -> dict:
     case_id = f"case-{uuid.uuid4().hex[:12]}"
     timestamp = _now()
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        check = _eligibility(conn, order_id, item_id, user_id)
+        if not check["eligible"]:
+            raise WorkflowError(409, {"message": "Return is not eligible", "reasons": check["reasons"]})
         conn.execute(
             """INSERT INTO return_cases
                (id, order_id, item_id, reason, status, created_at, updated_at)
@@ -236,20 +278,23 @@ def create_case(order_id: str, item_id: str, reason: str) -> dict:
         return _case(conn, _get_case(conn, case_id))
 
 
-def list_cases(order_id: str | None = None) -> dict:
+def list_cases(order_id: str | None = None, user_id: str | None = None) -> dict:
+    if order_id and user_id is not None:
+        get_order(order_id, user_id)
     with connect() as conn:
+        filters, parameters = [], []
         if order_id:
-            rows = conn.execute(
-                "SELECT * FROM return_cases WHERE order_id = ? ORDER BY created_at DESC", (order_id,)
-            ).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM return_cases ORDER BY created_at DESC").fetchall()
+            filters.append("return_cases.order_id=?"); parameters.append(order_id)
+        if user_id is not None:
+            filters.append("orders.user_id=?"); parameters.append(user_id)
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        rows = conn.execute("SELECT return_cases.* FROM return_cases JOIN orders ON orders.id=return_cases.order_id" + where + " ORDER BY return_cases.created_at DESC", parameters).fetchall()
         return {"items": [_case(conn, row) for row in rows], "simulated": True}
 
 
-def get_case(case_id: str) -> dict:
+def get_case(case_id: str, user_id: str | None = None) -> dict:
     with connect() as conn:
-        return _case(conn, _get_case(conn, case_id))
+        return _case(conn, _get_case(conn, case_id, user_id))
 
 
 def _set_status(conn: sqlite3.Connection, case_id: str, status: str, event_type: str, message: str, evidence: dict, resolved: bool = False) -> dict:
@@ -262,27 +307,30 @@ def _set_status(conn: sqlite3.Connection, case_id: str, status: str, event_type:
     return _case(conn, _get_case(conn, case_id))
 
 
-def schedule_pickup(case_id: str, pickup_date: date) -> dict:
+def schedule_pickup(case_id: str, pickup_date: date, user_id: str | None = None) -> dict:
     if pickup_date < date.today():
         raise WorkflowError(422, "Pickup date cannot be in the past")
     with connect() as conn:
-        row = _get_case(conn, case_id)
+        conn.execute("BEGIN IMMEDIATE")
+        row = _get_case(conn, case_id, user_id)
         if row["status"] != "requested":
             raise WorkflowError(409, "Pickup can only be scheduled for a requested return")
         return _set_status(conn, case_id, "pickup_scheduled", "pickup_scheduled", "Simulated pickup scheduled.", {"pickup_date": pickup_date.isoformat()})
 
 
-def mark_pickup_missed(case_id: str) -> dict:
+def mark_pickup_missed(case_id: str, user_id: str | None = None) -> dict:
     with connect() as conn:
-        row = _get_case(conn, case_id)
+        conn.execute("BEGIN IMMEDIATE")
+        row = _get_case(conn, case_id, user_id)
         if row["status"] != "pickup_scheduled":
             raise WorkflowError(409, "Only a scheduled pickup can be marked missed")
         return _set_status(conn, case_id, "missed_pickup", "pickup_missed", "Simulated pickup was marked as missed.", {"source": "demo action"})
 
 
-def collect_availability(case_id: str, availability: str) -> dict:
+def collect_availability(case_id: str, availability: str, user_id: str | None = None) -> dict:
     with connect() as conn:
-        row = _get_case(conn, case_id)
+        conn.execute("BEGIN IMMEDIATE")
+        row = _get_case(conn, case_id, user_id)
         if row["status"] != "missed_pickup":
             raise WorkflowError(409, "Customer availability can only be collected after a missed pickup")
         conn.execute(
@@ -294,17 +342,18 @@ def collect_availability(case_id: str, availability: str) -> dict:
         return _case(conn, _get_case(conn, case_id))
 
 
-def reschedule_pickup(case_id: str, pickup_date: date) -> dict:
+def reschedule_pickup(case_id: str, pickup_date: date, user_id: str | None = None) -> dict:
     if pickup_date < date.today():
         raise WorkflowError(422, "Pickup date cannot be in the past")
     with connect() as conn:
-        row = _get_case(conn, case_id)
+        conn.execute("BEGIN IMMEDIATE")
+        row = _get_case(conn, case_id, user_id)
         if row["status"] != "availability_collected" or not row["availability"]:
             raise WorkflowError(409, "Customer availability is required before rescheduling")
         return _set_status(conn, case_id, "pickup_scheduled", "pickup_rescheduled", "Simulated pickup rescheduled using customer availability.", {"pickup_date": pickup_date.isoformat(), "availability": row["availability"]})
 
 
-def advance_simulation(case_id: str, to_status: str) -> dict:
+def advance_simulation(case_id: str, to_status: str, user_id: str | None = None) -> dict:
     transitions = {
         "pickup_scheduled": ("picked_up", "pickup_completed", "Simulated pickup completed."),
         "picked_up": ("in_transit", "shipment_in_transit", "Simulated shipment is in transit."),
@@ -312,7 +361,8 @@ def advance_simulation(case_id: str, to_status: str) -> dict:
         "delivered": ("resolved", "refund_issued", "Simulated refund issued; return case resolved."),
     }
     with connect() as conn:
-        row = _get_case(conn, case_id)
+        conn.execute("BEGIN IMMEDIATE")
+        row = _get_case(conn, case_id, user_id)
         transition = transitions.get(row["status"])
         accepted_target = "refund_issued" if row["status"] == "delivered" else (transition[0] if transition else None)
         if transition is None or accepted_target != to_status:
@@ -327,12 +377,14 @@ def advance_simulation(case_id: str, to_status: str) -> dict:
         return _set_status(conn, case_id, transition[0], event_type, transition[2], evidence, resolved)
 
 
-def activity() -> dict:
+def activity(user_id: str | None = None) -> dict:
     with connect() as conn:
         rows = conn.execute(
             """SELECT case_events.*, return_cases.order_id
                FROM case_events JOIN return_cases ON return_cases.id = case_events.case_id
-               ORDER BY case_events.id DESC"""
+               JOIN orders ON orders.id=return_cases.order_id"""
+            + (" WHERE orders.user_id=?" if user_id is not None else "")
+            + " ORDER BY case_events.id DESC", (user_id,) if user_id is not None else ()
         ).fetchall()
         return {
             "items": [

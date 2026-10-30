@@ -7,12 +7,15 @@ import { cn } from '../lib/format'
 import { href, type Section } from '../lib/router'
 import { Wordmark } from './brand/Wordmark'
 import SimulatedBanner from './SimulatedBanner'
+import AccountControl from './AccountControl'
 
 const NAV: { id: Section; label: string; href: string; icon: typeof LayoutGrid }[] = [
   { id: 'overview', label: 'Overview', href: href.overview, icon: LayoutGrid },
-  { id: 'returns', label: 'Returns', href: href.returns, icon: RotateCcw },
-  { id: 'activity', label: 'Agent activity', href: href.activity, icon: Activity },
-  { id: 'orders', label: 'Orders', href: href.orders, icon: Receipt },
+  { id: 'orders', label: 'All Orders', href: href.orders, icon: Receipt },
+  { id: 'returns', label: 'Returns & Refunds', href: href.returns, icon: RotateCcw },
+  { id: 'analytics', label: 'Analytics', href: href.analytics, icon: LayoutGrid },
+  { id: 'retailers', label: 'Retailers', href: href.retailers, icon: Receipt },
+  { id: 'activity', label: 'Agent Activity', href: href.activity, icon: Activity },
 ]
 
 function useBadges() {
@@ -65,6 +68,7 @@ export default function AppShell({ section, children }: { section: Section; chil
           })}
         </nav>
         <div className="mt-auto flex flex-col gap-4 border-t border-line pt-5">
+          <AccountControl />
           <SimulatedBanner />
           <BackendStatus />
         </div>
@@ -74,7 +78,7 @@ export default function AppShell({ section, children }: { section: Section; chil
         <header className="sticky top-0 z-20 border-b border-line bg-porcelain/90 backdrop-blur lg:hidden">
           <div className="flex h-14 items-center justify-between px-4">
             <a href={href.home} aria-label="Cygnus home"><Wordmark /></a>
-            <BackendStatus />
+            <AccountControl />
           </div>
           <nav aria-label="Workspace" className="flex gap-1 overflow-x-auto px-3 pb-2">
             {NAV.map((n) => (
